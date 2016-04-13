@@ -743,6 +743,15 @@ deps_/home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.o := 
   include/linux/selinux.h \
     $(wildcard include/config/security/selinux.h) \
   include/uapi/linux/magic.h \
+  include/linux/socket.h \
+  arch/x86/include/uapi/asm/socket.h \
+  include/uapi/asm-generic/socket.h \
+  arch/x86/include/uapi/asm/sockios.h \
+  include/uapi/asm-generic/sockios.h \
+  include/uapi/linux/sockios.h \
+  include/linux/uio.h \
+  include/uapi/linux/uio.h \
+  include/uapi/linux/socket.h \
   include/linux/fdtable.h \
 
 /home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.o: $(deps_/home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.o)
