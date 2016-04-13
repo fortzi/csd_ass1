@@ -11,23 +11,25 @@ Source: https://blog.nyanpasu.me/a-proc-file-example/
 #include <linux/fs.h>
 #include <linux/dcache.h>
 
-// Write Protect Bit (CR0:16)
-#define CR0_WP 0x00010000 
-
-#define PROCFS_NAME "KMonitor"
-#define SYS_CALL_TABLE 0xffffffff81801460
+/* Write Protect Bit (CR0:16) */
+#define CR0_WP 						0x00010000 
+/* Constants */
+#define PROCFS_NAME 			"KMonitor"
+#define SYS_CALL_TABLE 		0xffffffff81801460
+#define PROCFS_MAX_SIZE		1024
 
 MODULE_LICENSE("GPL");
 
 /* Declerations */
 static ssize_t procfile_read(struct file*, char*, size_t, loff_t*);
-static ssize_t procfile_write(struct file*, const char*, unsigned long, void*);
+static ssize_t procfile_write(struct file*, const char __user *, size_t, loff_t*);
 ssize_t my_sys_read(int fd, void *buf, size_t count);
 
 /* Globals */
 struct proc_dir_entry *Our_Proc_File;
 void **syscall_table = (void **) SYS_CALL_TABLE;
 ssize_t (*orig_sys_read)(int fd, void *buf, size_t count);
+static char procfs_buffer[PROCFS_MAX_SIZE];
 
 static struct file_operations cmd_file_ops = {  
     .owner = THIS_MODULE,
@@ -100,9 +102,9 @@ static ssize_t procfile_read(struct file *file, char *buffer, size_t length, lof
     return ret;
 }
 
-static ssize_t procfile_write(struct file *file, const char *buffer, unsigned long count, void *data) {
+static ssize_t procfile_write(struct file *file, const char __user *buffer, size_t count, loff_t *data) {
 	/* get buffer size */
-	procfs_buffer_size = count;
+	int procfs_buffer_size = count;
 	if (procfs_buffer_size > PROCFS_MAX_SIZE ) {
 		procfs_buffer_size = PROCFS_MAX_SIZE;
 	}
@@ -117,7 +119,7 @@ static ssize_t procfile_write(struct file *file, const char *buffer, unsigned lo
 
 ssize_t my_sys_read(int fd, void *buf, size_t count) {
 
-	printk(KERN_INFO "############# my sys_read #############\namespace");
+	printk(KERN_INFO "############# my sys_read #############");
 	
 	return orig_sys_read(fd, buf, count);
 }
