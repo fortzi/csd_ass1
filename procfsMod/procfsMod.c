@@ -21,9 +21,9 @@ Source: https://blog.nyanpasu.me/a-proc-file-example/
 MODULE_LICENSE("GPL");
 
 /* Declerations */
-static ssize_t procfile_read(struct file*, char*, size_t, loff_t*);
+static ssize_t procfile_read(struct file*, char __user *, size_t, loff_t*);
 static ssize_t procfile_write(struct file*, const char __user *, size_t, loff_t*);
-ssize_t my_sys_read(int fd, void *buf, size_t count);
+ssize_t my_sys_read(int, void*, size_t);
 
 /* Globals */
 struct proc_dir_entry *Our_Proc_File;
@@ -37,9 +37,8 @@ static struct file_operations cmd_file_ops = {
 		.write = procfile_write,
 };
 
-int init_module() {
-		char buffer[128];
-		char *path_name;
+int __init init_module() {
+
 		unsigned long cr0;	
 	
     Our_Proc_File = proc_create(PROCFS_NAME, S_IFREG | S_IRUGO, NULL, &cmd_file_ops);
@@ -56,7 +55,6 @@ int init_module() {
 		
 	  printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
 		
-		
 		cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
@@ -69,14 +67,13 @@ int init_module() {
     return 0;
 }
 
-void cleanup_module() {
+void __exit cleanup_module() {
 		unsigned long cr0;
 		
     printk(KERN_INFO "removing /proc/%s\n", PROCFS_NAME);
     remove_proc_entry(PROCFS_NAME, NULL);
     printk(KERN_INFO "/proc/%s removed\n", PROCFS_NAME);
-		
-
+	
     printk(KERN_DEBUG "removing sys_read hook!\n");
     cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
@@ -85,7 +82,7 @@ void cleanup_module() {
     printk(KERN_DEBUG "sys_read hook removed!\n");
 }
 
-static ssize_t procfile_read(struct file *file, char *buffer, size_t length, loff_t *offset) {
+static ssize_t procfile_read(struct file *file, char __user *buffer, size_t length, loff_t *offset) {
     static int finished = 0;
     int ret = 0;
 
@@ -113,6 +110,8 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 	if ( copy_from_user(procfs_buffer, buffer, procfs_buffer_size) ) {
 		return -EFAULT;
 	}
+	
+	printk(KERN_INFO "new data from user (%s)\n", buffer);
 	
 	return procfs_buffer_size;
 }
