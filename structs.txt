@@ -1,0 +1,55 @@
+
+struct task_struct
+http://lxr.free-electrons.com/source/include/linux/sched.h#L1389
+
+struct files_struct
+http://lxr.free-electrons.com/source/include/linux/fdtable.h#L46
+
+struct fdtable
+http://lxr.free-electrons.com/source/include/linux/fdtable.h#L24
+
+struct file
+http://lxr.free-electrons.com/source/include/linux/fs.h#L866
+
+
+macro to make sure a fd is socket 
+need to use with f_inode->i_mode
+#define S_ISSOCK(m)     (((m) & S_IFMT) == S_IFSOCK)
+from (http://lxr.linux.no/#liinux+v3.1/include/linux/stat.h#L30)
+
+
+If you are sure that that file descriptor is a socket then you can
+cast to struct socket, the field "void * private_data"  in struct file
+
+struct socket
+http://lxr.free-electrons.com/source/include/linux/net.h#L110
+
+struct sock
+http://lxr.free-electrons.com/source/include/net/sock.h#L306
+
+struct sock-common
+http://lxr.free-electrons.com/source/include/net/sock.h#L148
+
+
+
+get the path of a file using d_path function in dcache.h
+http://lxr.free-electrons.com/source/fs/dcache.c#L3070
+
+usage example:
+-------------------
+	printk(KERN_INFO "my pid: %d\n", current->pid);
+		printk(KERN_INFO "my files count: %d\n", current->files->count);
+		
+		path_name = d_path(&(current->files->fdt->fd[0]->f_path), buffer, 128);
+		
+		printk(KERN_INFO "first file type: ");
+		if(S_ISSOCK(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "socket\n");
+		if(S_ISLNK(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "link\n");
+		if(S_ISREG(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "regular file\n");
+		if(S_ISBLK(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "block\n");
+		if(S_ISFIFO(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "pipe file\n");
+		if(S_ISCHR(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "character device\n");
+		if(S_ISDIR(current->files->fdt->fd[0]->f_inode->i_mode)) printk(KERN_INFO "directory\n");
+		
+		printk(KERN_INFO "first file path : %s\n", path_name);
+  

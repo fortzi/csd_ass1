@@ -11,5 +11,7 @@ int main(int agrc, char *argv[]) {
 		fclose(file);
 	#endif
 	
+	printf("my pid %d\n",current->pid);
+	
 	return 0;
 }

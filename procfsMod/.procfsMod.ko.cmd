@@ -1,0 +1,1 @@
+cmd_/home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.ko /home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.o /home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/procfsMod/procfsMod.mod.o
