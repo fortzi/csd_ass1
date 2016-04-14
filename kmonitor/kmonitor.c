@@ -64,6 +64,10 @@ static struct file_operations cmd_file_ops = {
 int __init init_module() {
 
 	unsigned long cr0;	
+
+	features.files = 1;
+	features.network = 1;
+	features.mount = 1;
 	
     Our_Proc_File = proc_create(PROCFS_NAME, S_IFREG | S_IRUGO | S_IWUGO, NULL, &cmd_file_ops);
 
@@ -79,7 +83,7 @@ int __init init_module() {
 		
 	  printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
 		
-		cr0 = read_cr0();
+	cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
     printk(KERN_DEBUG "overriding syscall read (original at %p)...\n", syscall_table[__NR_read]);
@@ -201,7 +205,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	getCurrentTime(timestamp);
 	
 	if(IS_ERR(exe_path) || IS_ERR(fd_path)) { // error code
-		printk(KERN_ALERT "error in resloving current executable path");
+		printk(KERN_ALERT "%s sys_read: error in resloving current executable path\n", timestamp);
 	} else {
 		printk(KERN_INFO "%s %s (pid: %d) is reading %zu bytes from %s\n", timestamp, exe_path, current->pid, count, fd_path);
 	}
@@ -231,7 +235,7 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	getCurrentTime(timestamp);
 
 	if(IS_ERR(exe_path) || IS_ERR(fd_path)) { // error code
-		printk(KERN_ALERT "error in resloving current executable path or fd path ~@~");
+		printk(KERN_ALERT "%s sys_write: error in resloving current executable path or fd path\n", timestamp);
 	}	else {
 		printk(KERN_INFO "%s %s (pid: %d) is writing %zu bytes to %s\n", timestamp, exe_path, current->pid, count, fd_path);
 	}
@@ -255,7 +259,7 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	getCurrentTime(timestamp);
 	
 	if(IS_ERR(exe_path)) { // error code 
-		printk(KERN_ALERT "error in resloving current executable path");
+		printk(KERN_ALERT "%s sys_open: error in resloving current executable path\n", timestamp);
 	}	else {
 		printk(KERN_INFO "%s %s (pid: %d) is opening %s\n", timestamp, exe_path, current->pid, filename);
 	}
@@ -276,6 +280,8 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	if(!features.network)
 		return orig_sys_listen(fd, backlog);
 
+	getCurrentTime(timestamp);
+
 	/* converting fd into struct file object */
 	spin_lock(&current->files->file_lock);
 	file = current->files->fdt->fd[fd];
@@ -283,7 +289,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 	/* making sure this is really a socked file (error will suggest user mistake) */
 	if(!S_ISSOCK(file->f_inode->i_mode)) {
-		printk(KERN_ALERT "~@~ Error: fd is not of type socket ! ~@~");
+		printk(KERN_ALERT "%s sys_listen: error fd is not of type socket !\n", timestamp);
 		return orig_sys_listen(fd, backlog);
 	}
 
@@ -294,17 +300,14 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	ip = (char*)&socket->sk->__sk_common.skc_rcv_saddr;
 	port =  (short)socket->sk->__sk_common.skc_num;
 	release_sock(socket->sk);
-
-	getCurrentTime(timestamp);
 	
 	/* extracting current procces file address */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-
 	if(IS_ERR(exe_path)) { // error code
-		printk(KERN_ALERT "error in resloving current executable path or fd path ~@~");
+		printk(KERN_ALERT "%s sys_listen: error in resloving current executable path or fd path\n", timestamp);
 	}	else {
 		printk(KERN_INFO "%s %s (pid: %d) is listening on %d.%d.%d.%d:%d\n", timestamp, exe_path, current->pid, ip[0], ip[1], ip[2], ip[3], (int)port);
 	}
@@ -314,18 +317,57 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen) {
 
-	if(!features.network)
-		orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
+	static char exe_buffer[PATH_LENGTH];
+	static char *exe_path;
+	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	ssize_t ret;
 
-	return orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
+	ret = orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
+
+	if(!features.network)
+		return ret;
+
+	getCurrentTime(timestamp);
+
+	if(ret == -1) {
+		printk(KERN_ALERT "%s sys_accept: error accured while accepting new connection\n", timestamp);
+		return ret;
+	}
+
+	/* extracting current procces file address */
+	task_lock(current);
+	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
+	task_unlock(current);
+
+	if(IS_ERR(exe_path)) // error code
+		printk(KERN_ALERT "%s sys_accept: error in resloving current executable path or fd path\n", timestamp);
+	else 
+		printk(KERN_INFO "%s %s (pid: %d) received a connection from %pISpc\n", timestamp, exe_path, current->pid, upeer_sockaddr);
+
+	return ret;
 }
 
 ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data) {
+	
+	static char exe_buffer[PATH_LENGTH];
+	static char *exe_path;
+	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 
 	if(!features.mount)
 		return orig_sys_mount(dev_name, dir_name, type, flags, data);
 
-	
+	getCurrentTime(timestamp);
+
+	/* extracting current procces file address */
+	task_lock(current);
+	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
+	task_unlock(current);
+
+	if(IS_ERR(exe_path)) // error code
+		printk(KERN_ALERT "%s sys_mount: error in resloving current executable path or fd path\n", timestamp);
+	else 
+		printk(KERN_INFO "%s %s (pid: %d) mounted %s to %s using %s file system\n", timestamp, exe_path, current->pid, dev_name, dir_name, type);
+
 	return orig_sys_mount(dev_name, dir_name, type, flags, data);
 }
 
@@ -346,3 +388,5 @@ void getCurrentTime(char* buffer) {
   
 /* TODO: add return value to 'getTimeStamp' and check for errors in return */  
 /* TODO: should all args on sys call be static ? as they are shread among alot of proccess ! */
+/* TODO: add history record */
+/* TODO: ask shlomi is it important to make sure system call succedded ? (like in mount case) */
