@@ -7,6 +7,8 @@
 
 #include <linux/sched.h>	
 #include <linux/socket.h>
+#include <net/sock.h>
+#include <linux/net.h>
 #include <linux/fdtable.h>
 #include <linux/fs.h>
 #include <linux/dcache.h>
@@ -80,27 +82,27 @@ int __init init_module() {
 		cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
-    printk(KERN_DEBUG "overriding syscall read ...\n");
+    printk(KERN_DEBUG "overriding syscall read (original at %p)...\n", syscall_table[__NR_read]);
     orig_sys_read = syscall_table[__NR_read];
-    syscall_table[__NR_read] = my_sys_read;
+    // syscall_table[__NR_read] = my_sys_read;
 		
-    printk(KERN_DEBUG "overriding syscall write ...\n");
+    printk(KERN_DEBUG "overriding syscall write (original at %p)...\n", syscall_table[__NR_write]);
     orig_sys_write = syscall_table[__NR_write];
-    syscall_table[__NR_write] = my_sys_write;
+    // syscall_table[__NR_write] = my_sys_write;
 
-	printk(KERN_DEBUG "overriding syscall open ...\n");
+	printk(KERN_DEBUG "overriding syscall open (original at %p)...\n",syscall_table[__NR_open]);
     orig_sys_open = syscall_table[__NR_open];
     syscall_table[__NR_open] = my_sys_open;
 
-	printk(KERN_DEBUG "overriding syscall listen ...\n");
+	printk(KERN_DEBUG "overriding syscall listen (original at %p)...\n", syscall_table[__NR_listen]);
     orig_sys_listen = syscall_table[__NR_listen];
     syscall_table[__NR_listen] = my_sys_listen;
 
-	printk(KERN_DEBUG "overriding syscall accept ...\n");
+	printk(KERN_DEBUG "overriding syscall accept (original at %p)...\n", syscall_table[__NR_accept]);
     orig_sys_accept = syscall_table[__NR_accept];
     syscall_table[__NR_accept] = my_sys_accept;
 
-	printk(KERN_DEBUG "overriding syscall mount ...\n");
+	printk(KERN_DEBUG "overriding syscall mount (original at %p)...\n", syscall_table[__NR_mount]);
     orig_sys_mount = syscall_table[__NR_mount];
     syscall_table[__NR_mount] = my_sys_mount;
 
@@ -219,7 +221,7 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
-	
+
 	getCurrentTime(timestamp);
 
 	if(IS_ERR(exe_path) || IS_ERR(fd_path)) { // error code
@@ -253,6 +255,47 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 }
 
 ssize_t my_sys_listen(int fd, int backlog) {
+
+	static char exe_buffer[PATH_LENGTH];
+	static char *exe_path;
+	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	static struct file *file;
+	static struct socket *socket;
+	unsigned char *ip;
+	short port;
+
+	printk("~@~ begin\n");
+
+	spin_lock(&current->files->file_lock);
+	file = current->files->fdt->fd[fd];
+	spin_unlock(&current->files->file_lock);
+
+	if(!S_ISSOCK(file->f_inode->i_mode)) {
+		printk(KERN_ALERT "~@~ Error: fd is not of type socket ! ~@~");
+		return orig_sys_listen(fd, backlog);
+	}
+
+	socket = (struct socket*) file->private_data;
+	
+	lock_sock(socket->sk);
+	ip = (char*)&socket->sk->__sk_common.skc_rcv_saddr;
+	port =  (short)socket->sk->__sk_common.skc_num;
+	release_sock(socket->sk);
+	
+	// printk(" ~@~ ip: %d.%d.%d.%d\n",ip[0], ip[1], ip[2], ip[3]);
+	// printk(" ~@~ port: %d\n",(int)port);
+
+	task_lock(current);
+	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
+	task_unlock(current);
+
+	getCurrentTime(timestamp);
+
+	if(IS_ERR(exe_path)) { // error code
+		printk(KERN_ALERT "error in resloving current executable path or fd path ~@~");
+	}	else {
+		printk(KERN_INFO "%s %s (pid: %d) is listening on %d.%d.%d.%d:%d\n", timestamp, exe_path, current->pid, ip[0], ip[1], ip[2], ip[3], (int)port);
+	}
 
 	return orig_sys_listen(fd, backlog);
 }
