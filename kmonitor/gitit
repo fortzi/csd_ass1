@@ -1,5 +1,10 @@
-#!/bin/bash          
+#!/bin/bash
+
+if [$1 = ""]; then 
+  echo "you forggot to enter a message"
+  exit 1
+fi
+
 git add -Av
 git commit -m $1
 git push
-   
