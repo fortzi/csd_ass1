@@ -5,6 +5,9 @@ if ["$1" = ""]; then
   exit 1
 fi
 
+echo "== adding all =="
 git add . -Av
+echo "== commit =="
 git commit -m "$1"
+echo "== pushing =="
 git push
