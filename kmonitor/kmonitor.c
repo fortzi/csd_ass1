@@ -187,6 +187,9 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 	
+	if(!features.files)
+		return orig_sys_read(fd, buf, count);
+
 	spin_lock(&current->files->file_lock);
 	fd_path = d_path(&(current->files->fdt->fd[fd]->f_path), fd_buffer, PATH_LENGTH);
 	spin_unlock(&current->files->file_lock);
@@ -214,6 +217,9 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 
+	if(!features.files)
+		return orig_sys_write(fd, buf, count);
+
 	spin_lock(&current->files->file_lock);
 	fd_path = d_path(&(current->files->fdt->fd[fd]->f_path), fd_buffer, PATH_LENGTH);
 	spin_unlock(&current->files->file_lock);
@@ -239,6 +245,9 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 	
+	if(!features.files)
+		return orig_sys_open(filename, flags, mode);
+
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), buffer, PATH_LENGTH);
 	task_unlock(current);
@@ -264,12 +273,15 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	unsigned char *ip;
 	short port;
 
-	printk("~@~ begin\n");
+	if(!features.network)
+		return orig_sys_listen(fd, backlog);
 
+	/* converting fd into struct file object */
 	spin_lock(&current->files->file_lock);
 	file = current->files->fdt->fd[fd];
 	spin_unlock(&current->files->file_lock);
 
+	/* making sure this is really a socked file (error will suggest user mistake) */
 	if(!S_ISSOCK(file->f_inode->i_mode)) {
 		printk(KERN_ALERT "~@~ Error: fd is not of type socket ! ~@~");
 		return orig_sys_listen(fd, backlog);
@@ -277,19 +289,19 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 	socket = (struct socket*) file->private_data;
 	
+	/* extracting port and ip address from socket data */
 	lock_sock(socket->sk);
 	ip = (char*)&socket->sk->__sk_common.skc_rcv_saddr;
 	port =  (short)socket->sk->__sk_common.skc_num;
 	release_sock(socket->sk);
-	
-	// printk(" ~@~ ip: %d.%d.%d.%d\n",ip[0], ip[1], ip[2], ip[3]);
-	// printk(" ~@~ port: %d\n",(int)port);
 
+	getCurrentTime(timestamp);
+	
+	/* extracting current procces file address */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	getCurrentTime(timestamp);
 
 	if(IS_ERR(exe_path)) { // error code
 		printk(KERN_ALERT "error in resloving current executable path or fd path ~@~");
@@ -302,11 +314,18 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen) {
 
+	if(!features.network)
+		orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
+
 	return orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
 }
 
 ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data) {
 
+	if(!features.mount)
+		return orig_sys_mount(dev_name, dir_name, type, flags, data);
+
+	
 	return orig_sys_mount(dev_name, dir_name, type, flags, data);
 }
 
