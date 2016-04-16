@@ -22,9 +22,12 @@
 #define PROCFS_MAX_SIZE			1024
 #define HUMAN_TIMESTAMP_SIZE	19
 #define PATH_LENGTH				4096
+#define HISTORY_SIZE			10
 
 /* Declerations */ 
 void getCurrentTime(char*);
+void addHistoryRecord(char* record);
+void freeHistory(void);
 static ssize_t procfile_read(struct file*, char __user *, size_t, loff_t*);
 static ssize_t procfile_write(struct file*, const char __user *, size_t, loff_t*);
 ssize_t my_sys_read(unsigned int, char __user *, size_t);
@@ -49,6 +52,15 @@ struct proc_dir_entry *Our_Proc_File;
 void **syscall_table = (void **) SYS_CALL_TABLE;
 static char procfs_buffer[PROCFS_MAX_SIZE];
 
+
+struct history {
+	spinlock_t lock;
+	char *records[HISTORY_SIZE];
+	int count;
+	int index;
+} history;
+
+
 struct features {
 	uint8_t files;
 	uint8_t network;
@@ -58,7 +70,7 @@ struct features {
 static struct file_operations cmd_file_ops = {  
     .owner = THIS_MODULE,
     .read = procfile_read,
-		.write = procfile_write,
+	.write = procfile_write,
 };
 
 int __init init_module() {
@@ -68,7 +80,11 @@ int __init init_module() {
 	features.files = 1;
 	features.network = 1;
 	features.mount = 1;
-	
+
+	spin_lock_init(&history.lock);
+	history.count = 0;
+	history.index = 0;
+
     Our_Proc_File = proc_create(PROCFS_NAME, S_IFREG | S_IRUGO | S_IWUGO, NULL, &cmd_file_ops);
 
     if (Our_Proc_File == NULL) {
@@ -81,7 +97,7 @@ int __init init_module() {
     proc_set_user(Our_Proc_File, KUIDT_INIT(0), KGIDT_INIT(0));
     proc_set_size(Our_Proc_File, 37);
 		
-	  printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
+	printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
 		
 	cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
@@ -96,7 +112,7 @@ int __init init_module() {
 
 	printk(KERN_DEBUG "overriding syscall open (original at %p)...\n",syscall_table[__NR_open]);
     orig_sys_open = syscall_table[__NR_open];
-    syscall_table[__NR_open] = my_sys_open;
+    // syscall_table[__NR_open] = my_sys_open;
 
 	printk(KERN_DEBUG "overriding syscall listen (original at %p)...\n", syscall_table[__NR_listen]);
     orig_sys_listen = syscall_table[__NR_listen];
@@ -108,7 +124,7 @@ int __init init_module() {
 
 	printk(KERN_DEBUG "overriding syscall mount (original at %p)...\n", syscall_table[__NR_mount]);
     orig_sys_mount = syscall_table[__NR_mount];
-    syscall_table[__NR_mount] = my_sys_mount;
+    // syscall_table[__NR_mount] = my_sys_mount;
 
     write_cr0(cr0);
 		
@@ -117,6 +133,8 @@ int __init init_module() {
 
 void __exit cleanup_module() {
 	unsigned long cr0;
+
+	freeHistory();
 		
     printk(KERN_INFO "removing /proc/%s\n", PROCFS_NAME);
     remove_proc_entry(PROCFS_NAME, NULL);
@@ -140,23 +158,34 @@ void __exit cleanup_module() {
 static ssize_t procfile_read(struct file *file, char __user *buffer, size_t length, loff_t *offset) {
     static int finished = 0;
     int ret = 0;
+    int i;
 
     printk(KERN_INFO "procfile_read (/proc/%s) called\n", PROCFS_NAME);
 
     if (finished) {
         printk(KERN_INFO "procfs_read: END\n");
         finished = 0;
+        ret = 0;
         return 0;
     }   
 
     finished = 1;
-    ret = sprintf(buffer, "Hello,world!\n");
+    ret += sprintf(buffer, "KMonitor - Last Events:\n");
+
+    for(i=0; i<history.count; i++)
+	    ret += sprintf(buffer+ret, "%s\n", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
+
+    ret += sprintf(buffer+ret, "KMonitor Current Configuration:\n");
+    ret += sprintf(buffer+ret, "File Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, "Network Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, "Mount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
     return ret;
 }
 
 static ssize_t procfile_write(struct file *file, const char __user *buffer, size_t count, loff_t *data) {
 	/* get buffer size */
 	int procfs_buffer_size = count;
+
 	if (procfs_buffer_size > PROCFS_MAX_SIZE ) {
 		procfs_buffer_size = PROCFS_MAX_SIZE;
 	}
@@ -321,6 +350,8 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 	ssize_t ret;
+	int output_size;
+	char *tmp_history;
 
 	ret = orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
 
@@ -341,9 +372,15 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 	if(IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_accept: error in resloving current executable path or fd path\n", timestamp);
-	else 
-		printk(KERN_INFO "%s %s (pid: %d) received a connection from %pISpc\n", timestamp, exe_path, current->pid, upeer_sockaddr);
+	else { 
+		output_size = printk(KERN_INFO "%s %s (pid: %d) received a connection from %pISpc\n", timestamp, exe_path, current->pid, upeer_sockaddr);
 
+		tmp_history = kmalloc(output_size+1, GFP_KERNEL);
+		if(tmp_history) {
+			sprintf(tmp_history, "%s %s (pid: %d) received a connection from %pISpc", timestamp, exe_path, current->pid, upeer_sockaddr);
+			addHistoryRecord(tmp_history);
+		}
+	}
 	return ret;
 }
 
@@ -385,8 +422,33 @@ void getCurrentTime(char* buffer) {
 		broken.tm_min,
 		broken.tm_sec);
 }
+
+void addHistoryRecord(char* record) {
+	spin_lock(&history.lock);
+
+	if(history.count == HISTORY_SIZE) {
+		kfree(history.records[history.index]);
+		history.records[history.index] = record;
+		history.index = (history.index + 1) % HISTORY_SIZE;
+	}
+	else {
+		history.records[history.index] = record;
+		history.index = (history.index + 1) % HISTORY_SIZE;
+		history.count++;
+	}
+
+	spin_unlock(&history.lock);
+}
+
+void freeHistory(void) {
+	int i;
+	for(i=0; i<history.count; i++)
+		kfree(history.records[i]);
+}
   
 /* TODO: add return value to 'getTimeStamp' and check for errors in return */  
 /* TODO: should all args on sys call be static ? as they are shread among alot of proccess ! */
 /* TODO: add history record */
 /* TODO: ask shlomi is it important to make sure system call succedded ? (like in mount case) */
+
+/* INFO: kmalloc http://www.makelinux.net/books/lkd2/ch11lev1sec4 */
