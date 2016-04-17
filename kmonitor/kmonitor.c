@@ -60,7 +60,6 @@ struct history {
 	int index;
 } history;
 
-
 struct features {
 	uint8_t files;
 	uint8_t network;
@@ -430,8 +429,7 @@ void addHistoryRecord(char* record) {
 		kfree(history.records[history.index]);
 		history.records[history.index] = record;
 		history.index = (history.index + 1) % HISTORY_SIZE;
-	}
-	else {
+	} else {
 		history.records[history.index] = record;
 		history.index = (history.index + 1) % HISTORY_SIZE;
 		history.count++;
