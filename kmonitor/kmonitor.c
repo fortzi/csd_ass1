@@ -173,12 +173,12 @@ static ssize_t procfile_read(struct file *file, char __user *buffer, size_t leng
     ret += sprintf(buffer, "KMonitor - Last Events:\n");
 
     for(i=0; i<history.count; i++)
-	    ret += sprintf(buffer+ret, "%s\n", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
+	    ret += sprintf(buffer+ret, " %s\n", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
 
     ret += sprintf(buffer+ret, "KMonitor Current Configuration:\n");
-    ret += sprintf(buffer+ret, "File Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
-    ret += sprintf(buffer+ret, "Network Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
-    ret += sprintf(buffer+ret, "Mount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, " File Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, " Network Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, " Mount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
     return ret;
 }
 

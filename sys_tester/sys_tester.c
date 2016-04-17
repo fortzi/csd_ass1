@@ -10,8 +10,10 @@ int main(int agrc, char *argv[]) {
 		fread(buffer,5,1,file);
 		fclose(file);
 	#endif
-	
-	printf("my pid %d\n",current->pid);
+
+	printf("my pid %d\n",getpid());
+	write(1, "this is to 1\n", 13);
+	write(2, "this is to 2\n", 13);
 	
 	return 0;
 }
