@@ -22,12 +22,12 @@
 #define SYS_CALL_TABLE 			0xffffffff81801460
 #define PROCFS_MAX_SIZE			1024
 #define HUMAN_TIMESTAMP_SIZE	19
-#define PATH_LENGTH				4096
+#define PATH_LENGTH				256
 #define HISTORY_SIZE			10
 
 #define PRINT_AND_STORE(count, tmp, ...) {		\
 		count = printk(KERN_INFO __VA_ARGS__); 	\
-		tmp = kmalloc(count+1, GFP_KERNEL);		\
+		tmp = kmalloc(count+2, GFP_KERNEL);		\
 		if (tmp) {								\
 			sprintf(tmp, __VA_ARGS__);			\
 			addHistoryRecord(tmp);				\
@@ -113,15 +113,15 @@ int __init init_module() {
 
     printk(KERN_DEBUG "overriding syscall read (original at %p)...\n", syscall_table[__NR_read]);
     orig_sys_read = syscall_table[__NR_read];
-    // syscall_table[__NR_read] = my_sys_read;
+    syscall_table[__NR_read] = my_sys_read;
 		
     printk(KERN_DEBUG "overriding syscall write (original at %p)...\n", syscall_table[__NR_write]);
     orig_sys_write = syscall_table[__NR_write];
-    // syscall_table[__NR_write] = my_sys_write;
+    syscall_table[__NR_write] = my_sys_write;
 
 	printk(KERN_DEBUG "overriding syscall open (original at %p)...\n",syscall_table[__NR_open]);
     orig_sys_open = syscall_table[__NR_open];
-    // syscall_table[__NR_open] = my_sys_open;
+    syscall_table[__NR_open] = my_sys_open;
 
 	printk(KERN_DEBUG "overriding syscall listen (original at %p)...\n", syscall_table[__NR_listen]);
     orig_sys_listen = syscall_table[__NR_listen];
@@ -133,7 +133,7 @@ int __init init_module() {
 
 	printk(KERN_DEBUG "overriding syscall mount (original at %p)...\n", syscall_table[__NR_mount]);
     orig_sys_mount = syscall_table[__NR_mount];
-    // syscall_table[__NR_mount] = my_sys_mount;
+    syscall_table[__NR_mount] = my_sys_mount;
 
     write_cr0(cr0);
 		
@@ -182,12 +182,12 @@ static ssize_t procfile_read(struct file *file, char __user *buffer, size_t leng
     ret += sprintf(buffer, "KMonitor - Last Events:\n");
 
     for(i=0; i<history.count; i++)
-	    ret += sprintf(buffer+ret, " %s\n", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
+	    ret += sprintf(buffer+ret, "\t%s", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
 
     ret += sprintf(buffer+ret, "KMonitor Current Configuration:\n");
-    ret += sprintf(buffer+ret, " File Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
-    ret += sprintf(buffer+ret, " Network Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
-    ret += sprintf(buffer+ret, " Mount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, "\tFile Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, "\tNetwork Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
+    ret += sprintf(buffer+ret, "\tMount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
     return ret;
 }
 
@@ -223,11 +223,11 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 /* signatures taken from include/linux/syscalls.h */
 ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	
-	static char fd_buffer[PATH_LENGTH];
-	static char exe_buffer[PATH_LENGTH];
-	static char *fd_path;
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	char fd_buffer[PATH_LENGTH];
+	char exe_buffer[PATH_LENGTH];
+	char *fd_path;
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	struct file *file;
 	int output_size;
 	char *tmp_history;
@@ -237,7 +237,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 
 	if (!(file = fget(fd)))
 		return orig_sys_read(fd, buf, count);
-		
+
 	fd_path = d_path(&(file->f_path), fd_buffer, PATH_LENGTH);
 
 	task_lock(current);
@@ -256,11 +256,11 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 
 ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	
-	static char fd_buffer[PATH_LENGTH];
-	static char exe_buffer[PATH_LENGTH];
-	static char *fd_path;
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	char fd_buffer[PATH_LENGTH];
+	char exe_buffer[PATH_LENGTH];
+	char *fd_path;
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	struct file *file;
 	int output_size;
 	char *tmp_history;
@@ -289,9 +289,9 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 
 ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	
-	static char buffer[PATH_LENGTH];
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	char buffer[PATH_LENGTH];
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	int output_size;
 	char *tmp_history;
 	
@@ -314,11 +314,11 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 
 ssize_t my_sys_listen(int fd, int backlog) {
 
-	static char exe_buffer[PATH_LENGTH];
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
-	static struct file *file;
-	static struct socket *socket;
+	char exe_buffer[PATH_LENGTH];
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
+	struct file *file;
+	struct socket *socket;
 	unsigned char *ip;
 	short port;
 	int output_size;
@@ -361,9 +361,9 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen) {
 
-	static char exe_buffer[PATH_LENGTH];
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	char exe_buffer[PATH_LENGTH];
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	ssize_t ret;
 	int output_size;
 	char *tmp_history;
@@ -395,9 +395,9 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data) {
 	
-	static char exe_buffer[PATH_LENGTH];
-	static char *exe_path;
-	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	char exe_buffer[PATH_LENGTH];
+	char *exe_path;
+	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	int output_size;
 	char *tmp_history;
 	int ret;
