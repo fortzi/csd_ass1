@@ -14,6 +14,7 @@
 #include <linux/dcache.h>
 #include <linux/time.h>
 #include <linux/limits.h>
+#include <linux/file.h>
 
 /* Constants */
 #define CR0_WP 					0x00010000  /* Write Protect Bit (CR0:16) */
@@ -227,15 +228,17 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	static char *fd_path;
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	struct file *file;
 	int output_size;
 	char *tmp_history;
 	
 	if (!features.files)
 		return orig_sys_read(fd, buf, count);
 
-	spin_lock(&current->files->file_lock);
-	fd_path = d_path(&(current->files->fdt->fd[fd]->f_path), fd_buffer, PATH_LENGTH);
-	spin_unlock(&current->files->file_lock);
+	if (!(file = fget(fd)))
+		return orig_sys_read(fd, buf, count);
+		
+	fd_path = d_path(&(file->f_path), fd_buffer, PATH_LENGTH);
 
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
@@ -258,15 +261,17 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	static char *fd_path;
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	struct file *file;
 	int output_size;
 	char *tmp_history;
 
 	if (!features.files)
 		return orig_sys_write(fd, buf, count);
 
-	spin_lock(&current->files->file_lock);
-	fd_path = d_path(&(current->files->fdt->fd[fd]->f_path), fd_buffer, PATH_LENGTH);
-	spin_unlock(&current->files->file_lock);
+	if(!(file = fget(fd)))
+		return orig_sys_write(fd, buf, count);
+
+	fd_path = d_path(&(file->f_path), fd_buffer, PATH_LENGTH);
 
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
@@ -325,9 +330,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	getCurrentTime(timestamp);
 
 	/* converting fd into struct file object */
-	spin_lock(&current->files->file_lock);
-	file = current->files->fdt->fd[fd];
-	spin_unlock(&current->files->file_lock);
+	file = fget(fd);
 
 	/* making sure this is really a socked file (error will suggest user mistake) */
 	if (!S_ISSOCK(file->f_inode->i_mode)) {
@@ -372,8 +375,8 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 	getCurrentTime(timestamp);
 
-	if (ret == -1) {
-		printk(KERN_ALERT "%s sys_accept: error accured while accepting new connection\n", timestamp);
+	if (ret != 0) {
+		printk(KERN_ALERT "%s sys_accept: error occured while accepting new connection\n", timestamp);
 		return ret;
 	}
 
@@ -397,11 +400,20 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
 	int output_size;
 	char *tmp_history;
+	int ret;
+
+	ret = orig_sys_mount(dev_name, dir_name, type, flags, data);
 
 	if (!features.mount)
-		return orig_sys_mount(dev_name, dir_name, type, flags, data);
+		return ret;
 
 	getCurrentTime(timestamp);
+
+	/* ret != 0 means that mount actions has failed */
+	if (ret != 0) {
+		printk(KERN_ALERT "%s sys_mount: error occured while mounting\n", timestamp);
+		return ret;
+	}
 
 	/* extracting current procces file address */
 	task_lock(current);
@@ -413,7 +425,7 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	else
 		PRINT_AND_STORE(output_size,tmp_history,"%s %s (pid: %d) mounted %s to %s using %s file system\n", timestamp, exe_path, current->pid, dev_name, dir_name, type);
 
-	return orig_sys_mount(dev_name, dir_name, type, flags, data);
+	return ret;
 }
 
 void getCurrentTime(char* buffer) {
@@ -455,7 +467,5 @@ void freeHistory(void) {
 
 /* TODO: add return value to 'getTimeStamp' and check for errors in return */
 /* TODO: should all args on sys call be static ? as they are shread among alot of proccess ! */
-/* TODO: add history record */
-/* TODO: ask shlomi is it important to make sure system call succedded ? (like in mount case) */
 
 /* INFO: kmalloc http://www.makelinux.net/books/lkd2/ch11lev1sec4 */

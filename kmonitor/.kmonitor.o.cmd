@@ -1089,6 +1089,7 @@ deps_/home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.o := \
   include/net/netlink.h \
   include/uapi/linux/net_tstamp.h \
   include/linux/fdtable.h \
+  include/linux/file.h \
 
 /home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.o: $(deps_/home/cyber/Desktop/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.o)
 

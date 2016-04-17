@@ -23,6 +23,7 @@ __attribute__((section("__versions"))) = {
 	{ 0xd2b09ce5, __VMLINUX_SYMBOL_STR(__kmalloc) },
 	{ 0xd4e54270, __VMLINUX_SYMBOL_STR(d_path) },
 	{ 0x7378123e, __VMLINUX_SYMBOL_STR(current_task) },
+	{ 0x41d32f19, __VMLINUX_SYMBOL_STR(fget) },
 	{ 0x37a0cba, __VMLINUX_SYMBOL_STR(kfree) },
 	{ 0xda3e43d1, __VMLINUX_SYMBOL_STR(_raw_spin_unlock) },
 	{ 0xd52bf1ce, __VMLINUX_SYMBOL_STR(_raw_spin_lock) },
@@ -46,4 +47,4 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "0471F5DD9AE4490C58CBA7E");
+MODULE_INFO(srcversion, "BA43DDE3243B4843B099417");
