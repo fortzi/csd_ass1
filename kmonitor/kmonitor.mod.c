@@ -18,14 +18,14 @@ static const struct modversion_info ____versions[]
 __used
 __attribute__((section("__versions"))) = {
 	{ 0x1e94b2a0, __VMLINUX_SYMBOL_STR(module_layout) },
-	{ 0xd2b09ce5, __VMLINUX_SYMBOL_STR(__kmalloc) },
-	{ 0x37a0cba, __VMLINUX_SYMBOL_STR(kfree) },
 	{ 0x4ff86f7f, __VMLINUX_SYMBOL_STR(release_sock) },
 	{ 0x96242370, __VMLINUX_SYMBOL_STR(lock_sock_nested) },
-	{ 0xda3e43d1, __VMLINUX_SYMBOL_STR(_raw_spin_unlock) },
+	{ 0xd2b09ce5, __VMLINUX_SYMBOL_STR(__kmalloc) },
 	{ 0xd4e54270, __VMLINUX_SYMBOL_STR(d_path) },
-	{ 0xd52bf1ce, __VMLINUX_SYMBOL_STR(_raw_spin_lock) },
 	{ 0x7378123e, __VMLINUX_SYMBOL_STR(current_task) },
+	{ 0x37a0cba, __VMLINUX_SYMBOL_STR(kfree) },
+	{ 0xda3e43d1, __VMLINUX_SYMBOL_STR(_raw_spin_unlock) },
+	{ 0xd52bf1ce, __VMLINUX_SYMBOL_STR(_raw_spin_lock) },
 	{ 0x28318305, __VMLINUX_SYMBOL_STR(snprintf) },
 	{ 0x92a9c60c, __VMLINUX_SYMBOL_STR(time_to_tm) },
 	{ 0x4f68e5c9, __VMLINUX_SYMBOL_STR(do_gettimeofday) },
@@ -46,4 +46,4 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "426AD09B88F3CEAC4E46498");
+MODULE_INFO(srcversion, "0471F5DD9AE4490C58CBA7E");

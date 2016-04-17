@@ -24,7 +24,16 @@
 #define PATH_LENGTH				4096
 #define HISTORY_SIZE			10
 
-/* Declerations */ 
+#define PRINT_AND_STORE(count, tmp, ...) {		\
+		count = printk(KERN_INFO __VA_ARGS__); 	\
+		tmp = kmalloc(count+1, GFP_KERNEL);		\
+		if (tmp) {								\
+			sprintf(tmp, __VA_ARGS__);			\
+			addHistoryRecord(tmp);				\
+		}}
+
+
+/* Declerations */
 void getCurrentTime(char*);
 void addHistoryRecord(char* record);
 void freeHistory(void);
@@ -66,7 +75,7 @@ struct features {
 	uint8_t mount;
 } features;
 
-static struct file_operations cmd_file_ops = {  
+static struct file_operations cmd_file_ops = {
     .owner = THIS_MODULE,
     .read = procfile_read,
 	.write = procfile_write,
@@ -149,7 +158,7 @@ void __exit cleanup_module() {
     syscall_table[__NR_listen] = orig_sys_listen;
     syscall_table[__NR_accept] = orig_sys_accept;
     syscall_table[__NR_mount] = orig_sys_mount;
-    
+  
     write_cr0(cr0);
     printk(KERN_DEBUG "system call hooks removed!\n");
 }
@@ -166,7 +175,7 @@ static ssize_t procfile_read(struct file *file, char __user *buffer, size_t leng
         finished = 0;
         ret = 0;
         return 0;
-    }   
+    } 
 
     finished = 1;
     ret += sprintf(buffer, "KMonitor - Last Events:\n");
@@ -194,17 +203,17 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 		return -EFAULT;
 	}
 	
-	if(strncmp(buffer,"FileMon 1" ,9)==0) 
+	if (strncmp(buffer,"FileMon 1" ,9)==0)
 		features.files = 1;
-	if(strncmp(buffer,"NetMon 1"  ,8)==0)
+	if (strncmp(buffer,"NetMon 1"  ,8)==0)
 		features.network = 1;
-	if(strncmp(buffer,"MountMon 1",10)==0)
+	if (strncmp(buffer,"MountMon 1",10)==0)
 		features.mount = 1;
-	if(strncmp(buffer,"FileMon 0" ,9)==0)
+	if (strncmp(buffer,"FileMon 0" ,9)==0)
 		features.files = 0;
-	if(strncmp(buffer,"NetMon 0"  ,8)==0)
+	if (strncmp(buffer,"NetMon 0"  ,8)==0)
 		features.network = 0;
-	if(strncmp(buffer,"MountMon 0",10)==0)
+	if (strncmp(buffer,"MountMon 0",10)==0)
 		features.mount = 0;
 	
 	return procfs_buffer_size;
@@ -218,8 +227,10 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	static char *fd_path;
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	int output_size;
+	char *tmp_history;
 	
-	if(!features.files)
+	if (!features.files)
 		return orig_sys_read(fd, buf, count);
 
 	spin_lock(&current->files->file_lock);
@@ -232,11 +243,10 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 
 	getCurrentTime(timestamp);
 	
-	if(IS_ERR(exe_path) || IS_ERR(fd_path)) { // error code
+	if (IS_ERR(exe_path) || IS_ERR(fd_path)) // error code
 		printk(KERN_ALERT "%s sys_read: error in resloving current executable path\n", timestamp);
-	} else {
-		printk(KERN_INFO "%s %s (pid: %d) is reading %zu bytes from %s\n", timestamp, exe_path, current->pid, count, fd_path);
-	}
+	else
+		PRINT_AND_STORE(output_size,tmp_history,"%s %s (pid: %d) is reading %zu bytes from %s\n", timestamp, exe_path, current->pid, count, fd_path);
 		
 	return orig_sys_read(fd, buf, count);
 }
@@ -248,8 +258,10 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	static char *fd_path;
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	int output_size;
+	char *tmp_history;
 
-	if(!features.files)
+	if (!features.files)
 		return orig_sys_write(fd, buf, count);
 
 	spin_lock(&current->files->file_lock);
@@ -262,11 +274,10 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 
 	getCurrentTime(timestamp);
 
-	if(IS_ERR(exe_path) || IS_ERR(fd_path)) { // error code
+	if (IS_ERR(exe_path) || IS_ERR(fd_path)) // error code
 		printk(KERN_ALERT "%s sys_write: error in resloving current executable path or fd path\n", timestamp);
-	}	else {
-		printk(KERN_INFO "%s %s (pid: %d) is writing %zu bytes to %s\n", timestamp, exe_path, current->pid, count, fd_path);
-	}
+	else
+		PRINT_AND_STORE(output_size,tmp_history,"%s %s (pid: %d) is writing %zu bytes to %s\n", timestamp, exe_path, current->pid, count, fd_path);
 	
 	return orig_sys_write(fd, buf, count);
 }
@@ -276,8 +287,10 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	static char buffer[PATH_LENGTH];
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	int output_size;
+	char *tmp_history;
 	
-	if(!features.files)
+	if (!features.files)
 		return orig_sys_open(filename, flags, mode);
 
 	task_lock(current);
@@ -286,11 +299,10 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 
 	getCurrentTime(timestamp);
 	
-	if(IS_ERR(exe_path)) { // error code 
+	if (IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_open: error in resloving current executable path\n", timestamp);
-	}	else {
-		printk(KERN_INFO "%s %s (pid: %d) is opening %s\n", timestamp, exe_path, current->pid, filename);
-	}
+	else
+		PRINT_AND_STORE(output_size,tmp_history,"%s %s (pid: %d) is opening %s\n", timestamp, exe_path, current->pid, filename);
 	
 	return orig_sys_open(filename, flags, mode);
 }
@@ -304,8 +316,10 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	static struct socket *socket;
 	unsigned char *ip;
 	short port;
+	int output_size;
+	char *tmp_history;
 
-	if(!features.network)
+	if (!features.network)
 		return orig_sys_listen(fd, backlog);
 
 	getCurrentTime(timestamp);
@@ -316,7 +330,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	spin_unlock(&current->files->file_lock);
 
 	/* making sure this is really a socked file (error will suggest user mistake) */
-	if(!S_ISSOCK(file->f_inode->i_mode)) {
+	if (!S_ISSOCK(file->f_inode->i_mode)) {
 		printk(KERN_ALERT "%s sys_listen: error fd is not of type socket !\n", timestamp);
 		return orig_sys_listen(fd, backlog);
 	}
@@ -334,11 +348,10 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(IS_ERR(exe_path)) { // error code
+	if (IS_ERR(exe_path))  // error code
 		printk(KERN_ALERT "%s sys_listen: error in resloving current executable path or fd path\n", timestamp);
-	}	else {
-		printk(KERN_INFO "%s %s (pid: %d) is listening on %d.%d.%d.%d:%d\n", timestamp, exe_path, current->pid, ip[0], ip[1], ip[2], ip[3], (int)port);
-	}
+	else
+		PRINT_AND_STORE(output_size,tmp_history, "%s %s (pid: %d) is listening on %d.%d.%d.%d:%d\n", timestamp, exe_path, current->pid, ip[0], ip[1], ip[2], ip[3], (int)port);
 
 	return orig_sys_listen(fd, backlog);
 }
@@ -354,12 +367,12 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 	ret = orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
 
-	if(!features.network)
+	if (!features.network)
 		return ret;
 
 	getCurrentTime(timestamp);
 
-	if(ret == -1) {
+	if (ret == -1) {
 		printk(KERN_ALERT "%s sys_accept: error accured while accepting new connection\n", timestamp);
 		return ret;
 	}
@@ -369,17 +382,11 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(IS_ERR(exe_path)) // error code
+	if (IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_accept: error in resloving current executable path or fd path\n", timestamp);
-	else { 
-		output_size = printk(KERN_INFO "%s %s (pid: %d) received a connection from %pISpc\n", timestamp, exe_path, current->pid, upeer_sockaddr);
-
-		tmp_history = kmalloc(output_size+1, GFP_KERNEL);
-		if(tmp_history) {
-			sprintf(tmp_history, "%s %s (pid: %d) received a connection from %pISpc", timestamp, exe_path, current->pid, upeer_sockaddr);
-			addHistoryRecord(tmp_history);
-		}
-	}
+	else
+		PRINT_AND_STORE(output_size, tmp_history, "%s %s (pid: %d) received a connection from %pISpc\n", timestamp, exe_path, current->pid, upeer_sockaddr);
+	
 	return ret;
 }
 
@@ -388,8 +395,10 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	static char exe_buffer[PATH_LENGTH];
 	static char *exe_path;
 	static char timestamp[HUMAN_TIMESTAMP_SIZE];
+	int output_size;
+	char *tmp_history;
 
-	if(!features.mount)
+	if (!features.mount)
 		return orig_sys_mount(dev_name, dir_name, type, flags, data);
 
 	getCurrentTime(timestamp);
@@ -399,10 +408,10 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(IS_ERR(exe_path)) // error code
+	if (IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_mount: error in resloving current executable path or fd path\n", timestamp);
-	else 
-		printk(KERN_INFO "%s %s (pid: %d) mounted %s to %s using %s file system\n", timestamp, exe_path, current->pid, dev_name, dir_name, type);
+	else
+		PRINT_AND_STORE(output_size,tmp_history,"%s %s (pid: %d) mounted %s to %s using %s file system\n", timestamp, exe_path, current->pid, dev_name, dir_name, type);
 
 	return orig_sys_mount(dev_name, dir_name, type, flags, data);
 }
@@ -425,7 +434,7 @@ void getCurrentTime(char* buffer) {
 void addHistoryRecord(char* record) {
 	spin_lock(&history.lock);
 
-	if(history.count == HISTORY_SIZE) {
+	if (history.count == HISTORY_SIZE) {
 		kfree(history.records[history.index]);
 		history.records[history.index] = record;
 		history.index = (history.index + 1) % HISTORY_SIZE;
@@ -443,8 +452,8 @@ void freeHistory(void) {
 	for(i=0; i<history.count; i++)
 		kfree(history.records[i]);
 }
-  
-/* TODO: add return value to 'getTimeStamp' and check for errors in return */  
+
+/* TODO: add return value to 'getTimeStamp' and check for errors in return */
 /* TODO: should all args on sys call be static ? as they are shread among alot of proccess ! */
 /* TODO: add history record */
 /* TODO: ask shlomi is it important to make sure system call succedded ? (like in mount case) */
