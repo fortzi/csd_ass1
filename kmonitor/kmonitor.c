@@ -289,9 +289,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 
 	if (!IS_ERR(exe_path) && !IS_ERR(fd_path)) // error code
 		PRINT_AND_STORE(tmp_history,"%s %s (pid: %d) is reading %zu bytes from %s\n", timestamp, exe_path, current->pid, count, fd_path);
@@ -334,9 +332,7 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 
 	if (IS_ERR(exe_path) || IS_ERR(fd_path)) // error code
 		printk(KERN_ALERT "%s sys_write: error in resloving current executable path or fd path\n", timestamp);
@@ -369,9 +365,7 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 	
 	if (IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_open: error in resloving current executable path\n", timestamp);
@@ -407,9 +401,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	if(!(file = fget(fd)))
 		return ret;
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 
 	/* Make sure this is really a socked file (error will suggest user mistake) */
 	if (!S_ISSOCK(file->f_inode->i_mode)) {
@@ -461,9 +453,7 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	if (!features.network)
 		return ret;
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 
 	/* Get the path of the executable that called the syscall */
 	task_lock(current);
@@ -494,9 +484,7 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	if (!features.mount)
 		return ret;
 
-	if(getCurrentTime(timestamp) != 0) {
-		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
-	}
+	getCurrentTime(timestamp);
 
 	/* Failed to execute original syscall, something is wrong */
 	if (ret != 0) {
@@ -527,10 +515,7 @@ int getCurrentTime(char* buffer) {
 	struct tm broken;
 	
 	/* Get current time stamp */
-	if (do_gettimeofday(&t) != 0) {
-		return -1;
-	}
-
+	do_gettimeofday(&t);
 	/* Convert timestamp to a format that makes sense */
 	time_to_tm(t.tv_sec, 0, &broken);
 	snprintf(buffer, HUMAN_TIMESTAMP_SIZE, "%d/%d/%ld %d:%d:%d",
