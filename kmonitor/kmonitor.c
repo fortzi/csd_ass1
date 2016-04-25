@@ -277,7 +277,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 
@@ -321,7 +321,7 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 
@@ -355,7 +355,7 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	exe_path = d_path(&(current->mm->exe_file->f_path), buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 	
@@ -392,7 +392,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	if(!(file = fget(fd)))
 		return ret;
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 
@@ -445,7 +445,7 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	if (!features.network)
 		return ret;
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 
@@ -477,7 +477,7 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	if (!features.mount)
 		return ret;
 
-	if(!getCurrentTime(timestamp)) {
+	if(getCurrentTime(timestamp) != 0) {
 		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
 	}
 
