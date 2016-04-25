@@ -478,7 +478,7 @@ char * allocateHistoryRecord(void) {
 	if (history.count < HISTORY_SIZE) 
 		history.count++;
 
-	return ret;
+		return ret;
 }
 
 /* TODO: add return value to 'getTimeStamp' and check for errors in return */
