@@ -1,1 +1,0 @@
-cmd_/mnt/hgfs/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /mnt/hgfs/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.ko /mnt/hgfs/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.o /mnt/hgfs/cyber-assigment/ass1/csd_ass1/kmonitor/kmonitor.mod.o
