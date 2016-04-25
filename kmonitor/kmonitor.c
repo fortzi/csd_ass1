@@ -65,17 +65,19 @@ static char procfs_buffer[PROCFS_MAX_SIZE];
 atomic_t references;
 
 
+/* Holds history records to be printed by the module's file_oprations.read */
 struct history {
-	spinlock_t lock;
-	char records[HISTORY_SIZE][HISTORY_RECORD];
-	int count;
-	int index;
+	spinlock_t lock;								/* Lock for write protection */
+	char records[HISTORY_SIZE][HISTORY_RECORD];		/* Array to hold history records */
+	int count;										/* The amount of entries recorded */
+	int index;										/* The index of the records array to write the next entry to */
 } history;
 
+/* Describes the features supported by the module */
 struct features {
-	uint8_t files;
-	uint8_t network;
-	uint8_t mount;
+	uint8_t files;									/* Record read, write and open syscalls */
+	uint8_t network;								/* Record listen and accept syscalls */
+	uint8_t mount;									/* Record mount syscall */
 } features;
 
 static struct file_operations cmd_file_ops = {
@@ -84,6 +86,10 @@ static struct file_operations cmd_file_ops = {
 	.write = procfile_write,
 };
 
+/*
+ * Triggers when the module is initiated.
+ * Sets up features and syscall overrides.
+ */
 int __init init_module() {
 
 	unsigned long cr0;	
@@ -116,7 +122,7 @@ int __init init_module() {
 	cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
-    /* Override syscalls and keep old syscalls for our use */
+    /* Override syscalls and keep old syscalls for calling from within the custom syscalls and syscall restore */
     printk(KERN_DEBUG "overriding syscall read (original at %p)...\n", syscall_table[__NR_read]);
     orig_sys_read = syscall_table[__NR_read];
     syscall_table[__NR_read] = my_sys_read;
@@ -147,6 +153,10 @@ int __init init_module() {
     return 0;
 }
 
+/*
+ * Triggered on module unload.
+ * Restores original syscalls.
+ */
 void __exit cleanup_module() {
 	unsigned long cr0;
 
@@ -242,7 +252,9 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 	return procfs_buffer_size;
 }
 
-/* signatures taken from include/linux/syscalls.h */
+/* Signatures taken from include/linux/syscalls.h */
+
+/* Custom read syscall */
 ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	char fd_buffer[PATH_LENGTH];
 	char exe_buffer[PATH_LENGTH];
@@ -287,6 +299,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	return ret;
 }
 
+/* Custom write syscall */
 ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {	
 	char fd_buffer[PATH_LENGTH];
 	char exe_buffer[PATH_LENGTH];
@@ -333,6 +346,7 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	return ret;
 }
 
+/* Custom open syscall */
 ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	char buffer[PATH_LENGTH];
 	char *exe_path;
@@ -367,6 +381,7 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 	return ret;
 }
 
+/* Custom listen syscall */
 ssize_t my_sys_listen(int fd, int backlog) {
 	char exe_buffer[PATH_LENGTH];
 	char *exe_path;
@@ -426,6 +441,7 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	return ret;
 }
 
+/* Custom accept syscall */
 ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user *upeer_addrlen) {
 
 	char exe_buffer[PATH_LENGTH];
@@ -462,6 +478,7 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	return ret;
 }
 
+/* Custom mount syscall */
 ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *type, unsigned long flags, void __user *data) {
 	
 	char exe_buffer[PATH_LENGTH];
