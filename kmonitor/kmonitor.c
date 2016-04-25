@@ -37,7 +37,7 @@
 		}	
 
 /* Declerations */
-void getCurrentTime(char*);
+int getCurrentTime(char*);
 char* allocateHistoryRecord(void);
 static ssize_t procfile_read(struct file*, char __user *, size_t, loff_t*);
 static ssize_t procfile_write(struct file*, const char __user *, size_t, loff_t*);
@@ -88,6 +88,7 @@ int __init init_module() {
 
 	unsigned long cr0;	
 
+	/* Init features and history */
 	features.files = 1;
 	features.network = 1;
 	features.mount = 1;
@@ -106,13 +107,16 @@ int __init init_module() {
 
     /* KUIDT_INIT is a macro defined in the file 'linux/uidgid.h'. KGIDT_INIT also appears here. */
     proc_set_user(Our_Proc_File, KUIDT_INIT(0), KGIDT_INIT(0));
+    /* Set proc dir entry size */
     proc_set_size(Our_Proc_File, 37);
 		
 	printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
-		
+	
+	/* Disable syscall table write protection */
 	cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
+    /* Override syscalls and keep old syscalls for our use */
     printk(KERN_DEBUG "overriding syscall read (original at %p)...\n", syscall_table[__NR_read]);
     orig_sys_read = syscall_table[__NR_read];
     syscall_table[__NR_read] = my_sys_read;
@@ -137,6 +141,7 @@ int __init init_module() {
     orig_sys_mount = syscall_table[__NR_mount];
     syscall_table[__NR_mount] = my_sys_mount;
 
+    /* Restore syscall table write protection */
     write_cr0(cr0);
 		
     return 0;
@@ -150,9 +155,11 @@ void __exit cleanup_module() {
     printk(KERN_INFO "/proc/%s removed\n", PROCFS_NAME);
 	
     printk(KERN_DEBUG "removing system call hooks!\n");
+    /* Disable syscall table write protection */
     cr0 = read_cr0();
     write_cr0(cr0 & ~CR0_WP);
 
+    /* Reset syscalls to original functions */
     syscall_table[__NR_read] = orig_sys_read;
     syscall_table[__NR_write] = orig_sys_write;
     syscall_table[__NR_open] = orig_sys_open;
@@ -160,11 +167,16 @@ void __exit cleanup_module() {
     syscall_table[__NR_accept] = orig_sys_accept;
     syscall_table[__NR_mount] = orig_sys_mount;
   
+  	/* Restore syscall table write protection */
     write_cr0(cr0);
 
     printk(KERN_DEBUG "system call hooks removed!\n");
 }
 
+/*
+ * Triggered when user reads from the module's proc.
+ * Prints out the last HISTORY_SIZE of the recorded syscalls and what is being monitored by the module.
+ */
 static ssize_t procfile_read(struct file *file, char __user *buffer, size_t length, loff_t *offset) {
     static int finished = 0;
     int ret = 0;
@@ -182,16 +194,24 @@ static ssize_t procfile_read(struct file *file, char __user *buffer, size_t leng
     finished = 1;
     ret += sprintf(buffer, "KMonitor - Last Events:\n");
 
+    /* Print out history */
     for(i=0; i<history.count; i++)
 	    ret += sprintf(buffer+ret, "\t%s", history.records[history.index-1-i < 0 ? HISTORY_SIZE + (history.index-1-i) : history.index-1-i]);	
 
+	/* Print out what is being monitored */
     ret += sprintf(buffer+ret, "KMonitor Current Configuration:\n");
     ret += sprintf(buffer+ret, "\tFile Monitoring: %s\n",(features.files ? "Enabled" : "Disabled"));
     ret += sprintf(buffer+ret, "\tNetwork Monitoring: %s\n",(features.network ? "Enabled" : "Disabled"));
     ret += sprintf(buffer+ret, "\tMount Monitoring: %s\n",(features.mount ? "Enabled" : "Disabled"));
+    
     return ret;
 }
 
+/*
+ * Triggered when user writes to the module's proc.
+ * Sets features on or off when given [FileMon|NetMon|MountMon 0|1].
+ * Ignors any other input.
+ */
 static ssize_t procfile_write(struct file *file, const char __user *buffer, size_t count, loff_t *data) {
 	/* get buffer size */
 	int procfs_buffer_size = count;
@@ -205,6 +225,7 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 		return -EFAULT;
 	}
 	
+	/* Parse user feature request, ignore bad requests */
 	if (strncmp(buffer,"FileMon 1" ,9)==0)
 		features.files = 1;
 	if (strncmp(buffer,"NetMon 1"  ,8)==0)
@@ -223,7 +244,6 @@ static ssize_t procfile_write(struct file *file, const char __user *buffer, size
 
 /* signatures taken from include/linux/syscalls.h */
 ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
-	
 	char fd_buffer[PATH_LENGTH];
 	char exe_buffer[PATH_LENGTH];
 	char *fd_path;
@@ -235,25 +255,31 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 
 	ret =  orig_sys_read(fd, buf, count);
 
+	/* Failed to execute original syscall, something is wrong */
 	if (ret == -1) 
 		return ret;
 
+	/* Do nothing if feature is turned off */
 	if (!features.files)
 		return ret;
 
-	if (!(file = fget(fd))) 
+	/* Get file using file descriptor, do nothing if it failes */
+	if (!(file = fget(fd)))
 		return ret;
 
 	fd_path = d_path(&(file->f_path), fd_buffer, PATH_LENGTH);
 
-	/* releasing some shit */
+	/* Releasing the reference to the file */
 	fput(file);
 
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 
 	if (!IS_ERR(exe_path) && !IS_ERR(fd_path)) // error code
 		PRINT_AND_STORE(tmp_history,"%s %s (pid: %d) is reading %zu bytes from %s\n", timestamp, exe_path, current->pid, count, fd_path);
@@ -261,8 +287,7 @@ ssize_t my_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	return ret;
 }
 
-ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
-	
+ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {	
 	char fd_buffer[PATH_LENGTH];
 	char exe_buffer[PATH_LENGTH];
 	char *fd_path;
@@ -274,25 +299,31 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 
 	ret = orig_sys_write(fd, buf, count);
 
+	/* Failed to execute original syscall, something is wrong */
 	if(ret == -1)
 		return ret;
 
+	/* Do nothing if feature is turned off */
 	if (!features.files)
 		return ret;
 
+	/* Get file using file descriptor, do nothing if it failes */
 	if(!(file = fget(fd)))
 		return ret;
 
 	fd_path = d_path(&(file->f_path), fd_buffer, PATH_LENGTH);
 
-	/* releasing some shit */
+	/* Releasing the reference to the file */
 	fput(file);
 
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 
 	if (IS_ERR(exe_path) || IS_ERR(fd_path)) // error code
 		printk(KERN_ALERT "%s sys_write: error in resloving current executable path or fd path\n", timestamp);
@@ -303,7 +334,6 @@ ssize_t my_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 }
 
 ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
-	
 	char buffer[PATH_LENGTH];
 	char *exe_path;
 	char timestamp[HUMAN_TIMESTAMP_SIZE];
@@ -312,17 +342,22 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 
 	ret = orig_sys_open(filename, flags, mode);
 
+	/* Failed to execute original syscall, something is wrong */
 	if(ret == -1)
 		return ret;
 	
+	/* Do nothing if feature is turned off */
 	if (!features.files)
 		return ret;
 
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 	
 	if (IS_ERR(exe_path)) // error code
 		printk(KERN_ALERT "%s sys_open: error in resloving current executable path\n", timestamp);
@@ -333,7 +368,6 @@ ssize_t my_sys_open(const char __user *filename, int flags, umode_t mode) {
 }
 
 ssize_t my_sys_listen(int fd, int backlog) {
-
 	char exe_buffer[PATH_LENGTH];
 	char *exe_path;
 	char timestamp[HUMAN_TIMESTAMP_SIZE];
@@ -346,19 +380,23 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 	ret = orig_sys_listen(fd, backlog);
 
+	/* Failed to execute original syscall, something is wrong */
 	if (ret == -1)
 		return ret;
 
+	/* Do nothing if feature is turned off */
 	if (!features.network)
 		return ret;
 
-	/* converting fd into struct file object */
+	/* Get file using file descriptor, do nothing if it failes */
 	if(!(file = fget(fd)))
 		return ret;
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 
-	/* making sure this is really a socked file (error will suggest user mistake) */
+	/* Make sure this is really a socked file (error will suggest user mistake) */
 	if (!S_ISSOCK(file->f_inode->i_mode)) {
 		printk(KERN_ALERT "%s sys_listen: error fd is not of type socket !\n", timestamp);
 		fput(file);
@@ -366,20 +404,21 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	}
 
 	socket = (struct socket*) file->private_data;
+	/* Releasing the reference to the file */
 	fput(file);
 
-	/* extracting port and ip address from socket data */
+	/* Extract port and ip address from socket data */
 	lock_sock(socket->sk);
 	ip = (char*)&socket->sk->__sk_common.skc_rcv_saddr;
 	port =  (short)socket->sk->__sk_common.skc_num;
 	release_sock(socket->sk);
 	
-	/* extracting current procces file address */
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
 
-	if (IS_ERR(exe_path))  // error code
+	if (IS_ERR(exe_path))
 		printk(KERN_ALERT "%s sys_listen: error in resloving current executable path or fd path\n", timestamp);
 	else
 		PRINT_AND_STORE(tmp_history, "%s %s (pid: %d) is listening on %d.%d.%d.%d:%d\n", timestamp, exe_path, current->pid, ip[0], ip[1], ip[2], ip[3], (int)port);
@@ -398,15 +437,19 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 	ret = orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
 
+	/* Failed to execute original syscall, something is wrong */
 	if (ret == -1)
 		return ret;
 
+	/* Do nothing if feature is turned off */
 	if (!features.network)
 		return ret;
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 
-	/* extracting current procces file address */
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
@@ -430,18 +473,21 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 
 	ret = orig_sys_mount(dev_name, dir_name, type, flags, data);
 
+	/* Do nothing if feature is turned off */
 	if (!features.mount)
 		return ret;
 
-	getCurrentTime(timestamp);
+	if(!getCurrentTime(timestamp)) {
+		strncpy(timestamp, "[BAD TIMESTAMP]", HUMAN_TIMESTAMP_SIZE);
+	}
 
-	/* ret != 0 means that mount actions has failed */
+	/* Failed to execute original syscall, something is wrong */
 	if (ret != 0) {
 		printk(KERN_ALERT "%s sys_mount: error occured while mounting\n", timestamp);
 		return ret;
 	}
 
-	/* extracting current procces file address */
+	/* Get the path of the executable that called the syscall */
 	task_lock(current);
 	exe_path = d_path(&(current->mm->exe_file->f_path), exe_buffer, PATH_LENGTH);
 	task_unlock(current);
@@ -454,11 +500,21 @@ ssize_t my_sys_mount(char __user *dev_name, char __user *dir_name, char __user *
 	return ret;
 }
 
-void getCurrentTime(char* buffer) {
+/*
+ * Puts the current timestamp in a human readable format in the given buffer.
+ * Buffer's size is expected to be at least of size HUMAN_TIMESTAMP_SIZE.
+ * Return -1 on fail and 0 on success.
+ */
+int getCurrentTime(char* buffer) {
 	struct timeval t;
 	struct tm broken;
 	
-	do_gettimeofday(&t);
+	/* Get current time stamp */
+	if (do_gettimeofday(&t) != 0) {
+		return -1;
+	}
+
+	/* Convert timestamp to a format that makes sense */
 	time_to_tm(t.tv_sec, 0, &broken);
 	snprintf(buffer, HUMAN_TIMESTAMP_SIZE, "%d/%d/%ld %d:%d:%d",
 		broken.tm_mday,
@@ -467,9 +523,15 @@ void getCurrentTime(char* buffer) {
 		broken.tm_hour,
 		broken.tm_min,
 		broken.tm_sec);
+
+	return 0;
 }
 
-char * allocateHistoryRecord(void) {
+/*
+ * Return a buffer to write a history entry into.
+ * History is cyclic modulu HISTORY_SIZE.
+ */
+char *allocateHistoryRecord(void) {
 	char* ret;
 
 	ret = history.records[history.index];
@@ -480,8 +542,6 @@ char * allocateHistoryRecord(void) {
 
 	return ret;
 }
-
-/* TODO: add return value to 'getTimeStamp' and check for errors in return */
 
 /* TODO: ask shlomi - should module exit wait for all proccess using the hooks ? */
 
