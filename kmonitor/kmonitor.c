@@ -414,6 +414,13 @@ ssize_t my_sys_listen(int fd, int backlog) {
 	/* Releasing the reference to the file */
 	fput(file);
 
+	/* make sure this is a TCP socket */
+	/* SOCK_STREAM for TCP and SOCK_DGRAM for UDP */
+	if(socket->sk->sk_type != SOCK_STREAM) {
+		printk(KERN_ALERT "%s sys_listen: socket type is not TCP !!\n", timestamp);
+		return ret;
+	}
+
 	/* Extract port and ip address from socket data */
 	lock_sock(socket->sk);
 	ip = (char*)&socket->sk->__sk_common.skc_rcv_saddr;
@@ -441,19 +448,42 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 	char timestamp[HUMAN_TIMESTAMP_SIZE];
 	ssize_t ret;
 	char *tmp_history;
-
+	struct file *file;
+	struct socket *socket;
 
 	ret = orig_sys_accept(fd, upeer_sockaddr, upeer_addrlen);
 
 	/* Failed to execute original syscall, something is wrong */
-	if (ret == -1)
+	if (ret == -1 || ret < 0 )
 		return ret;
 
 	/* Do nothing if feature is turned off */
 	if (!features.network)
 		return ret;
 
+	/* Get file using file descriptor, do nothing if it failes */
+	if(!(file = fget(fd)))
+		return ret;
+
 	getCurrentTime(timestamp);
+
+	/* Make sure this is really a socked file (error will suggest user mistake) */
+	if (!S_ISSOCK(file->f_inode->i_mode)) {
+		printk(KERN_ALERT "%s sys_accept: error fd is not of type socket !\n", timestamp);
+		fput(file);
+		return ret;
+	}
+
+	socket = (struct socket*) file->private_data;
+	/* Releasing the reference to the file */
+	fput(file);
+
+	/* make sure this is a TCP socket */
+	/* SOCK_STREAM for TCP and SOCK_DGRAM for UDP */
+	if(socket->sk->sk_type != SOCK_STREAM) {
+		printk(KERN_ALERT "%s sys_accept: socket type is not TCP !!\n", timestamp);
+		return ret;
+	}
 
 	/* Get the path of the executable that called the syscall */
 	task_lock(current);
