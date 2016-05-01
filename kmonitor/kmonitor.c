@@ -416,8 +416,19 @@ ssize_t my_sys_listen(int fd, int backlog) {
 
 	/* make sure this is a TCP socket */
 	/* SOCK_STREAM for TCP and SOCK_DGRAM for UDP */
+
+	if(socket->sk->sk_family != AF_INET && socket->sk->sk_family != AF_INET6) {
+		printk(KERN_ALERT "%s sys_listen: socket family is not IP !!\n", timestamp);
+		return ret;
+	}
+
 	if(socket->sk->sk_type != SOCK_STREAM) {
-		printk(KERN_ALERT "%s sys_listen: socket type is not TCP !!\n", timestamp);
+		printk(KERN_ALERT "%s sys_listen: socket type is not STREAM !!\n", timestamp);
+		return ret;
+	}
+
+	if(socket->sk->sk_protocol != IPPROTO_IP && socket->sk->sk_protocol != IPPROTO_TCP) {
+		printk(KERN_ALERT "%s sys_listen: socket protocal is not TCP !!\n", timestamp);
 		return ret;
 	}
 
@@ -480,8 +491,18 @@ ssize_t my_sys_accept(int fd, struct sockaddr __user *upeer_sockaddr, int __user
 
 	/* make sure this is a TCP socket */
 	/* SOCK_STREAM for TCP and SOCK_DGRAM for UDP */
+	if(socket->sk->sk_family != AF_INET && socket->sk->sk_family != AF_INET6) {
+		printk(KERN_ALERT "%s sys_accept: socket family is not IP !!\n", timestamp);
+		return ret;
+	}
+
 	if(socket->sk->sk_type != SOCK_STREAM) {
-		printk(KERN_ALERT "%s sys_accept: socket type is not TCP !!\n", timestamp);
+		printk(KERN_ALERT "%s sys_accept: socket type is not STREAM !!\n", timestamp);
+		return ret;
+	}
+
+	if(socket->sk->sk_protocol != IPPROTO_IP && socket->sk->sk_protocol != IPPROTO_TCP) {
+		printk(KERN_ALERT "%s sys_accept: socket protocal is not TCP !!\n", timestamp);
 		return ret;
 	}
 
